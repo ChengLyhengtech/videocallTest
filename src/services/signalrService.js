@@ -9,6 +9,7 @@ class SignalRService {
       onReceiveIceCandidate: null,
       onReceiveCallEnded: null,
       onStatusChange: null,
+      onConnectionClosed: null,
       onLog: null,
     };
   }
@@ -121,6 +122,9 @@ class SignalRService {
         this.log(`SignalR connection closed ${error ? ': ' + error.message : ''}`, 'error');
         if (this.listeners.onStatusChange) {
           this.listeners.onStatusChange(signalR.HubConnectionState.Disconnected);
+        }
+        if (this.listeners.onConnectionClosed) {
+          this.listeners.onConnectionClosed(error);
         }
       });
 

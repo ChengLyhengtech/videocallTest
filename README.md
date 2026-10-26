@@ -21,11 +21,12 @@ A standalone single-page application built with React, Vite, and Tailwind CSS de
   - Connects to `http://localhost:5201/hubs/videocall` (configurable).
   - Supplies JWT Bearer authentication via `accessTokenFactory` (`?access_token=...` on WebSockets and `Authorization: Bearer` on HTTP negotiation).
   - Configurable Transport mode: **Auto (WebSockets + LongPolling)**, **WebSockets Only**, or **LongPolling Only**.
-- **WebRTC Signaling Protocol**:
+- **WebRTC Signaling Protocol & Disconnection Handling**:
   - `SendVideoOffer(targetUserId, offer)` ⇄ `ReceiveVideoOffer(senderUserId, offer)`
   - `SendVideoAnswer(targetUserId, answer)` ⇄ `ReceiveVideoAnswer(senderUserId, answer)`
   - `SendIceCandidate(targetUserId, candidate.toJSON())` ⇄ `ReceiveIceCandidate(senderUserId, candidate)`
   - `EndVideoCall(targetUserId)` ⇄ `ReceiveCallEnded(senderUserId)`
+  - **Page Refresh / Abrupt Disconnection**: `window.beforeunload` and server `OnDisconnectedAsync` automatically trigger `ReceiveCallEnded` to tear down the call, release camera/microphone hardware tracks, and display an alert banner: *"Peer [User] disconnected or refreshed the page. Call ended."*
   - Queued ICE candidate buffer prevents race conditions before `setRemoteDescription`.
 
 ---

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Video, VideoOff, MicOff, Mic, User, Radio, Maximize2, Sparkles, PhoneCall, Volume2 
+  Video, VideoOff, MicOff, Mic, User, Radio, Maximize2, Sparkles, PhoneCall, Volume2, PhoneOff, X 
 } from 'lucide-react';
 import { CallState } from '../hooks/useWebRTC';
 
@@ -15,6 +15,8 @@ export default function VideoGrid({
   isVideoDisabled,
   isSyntheticStream,
   layoutMode,
+  callEndedNotice,
+  onDismissNotice,
 }) {
   const [callDuration, setCallDuration] = useState(0);
 
@@ -66,6 +68,36 @@ export default function VideoGrid({
           backgroundSize: '24px 24px'
         }}
       />
+
+      {/* Disconnection Alert Banner */}
+      {callEndedNotice && (
+        <div className="absolute top-4 inset-x-4 z-40 p-3 sm:p-4 rounded-2xl bg-rose-950/90 border border-rose-500/60 shadow-2xl backdrop-blur-md flex items-center justify-between gap-3 text-xs text-rose-200 animate-bounce-once">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
+              <PhoneOff className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-100 flex items-center gap-2">
+                <span>Call Terminated</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 font-mono font-bold">
+                  {callEndedNotice.type === 'peer_disconnected' ? 'Peer Disconnected / Refreshed' : 'Connection Closed'}
+                </span>
+              </div>
+              <p className="text-slate-300 text-xs mt-0.5">
+                {callEndedNotice.message}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onDismissNotice}
+            className="p-1.5 rounded-lg text-rose-400 hover:text-rose-100 hover:bg-rose-900/50 transition-colors cursor-pointer shrink-0"
+            title="Dismiss notice"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Hidden/Active HTML Video Elements for WebRTC audio playback */}
       <video

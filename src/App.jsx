@@ -39,6 +39,8 @@ export default function App() {
     callType,
     activePeerId,
     incomingCall,
+    callEndedNotice,
+    dismissCallEndedNotice,
     isAudioMuted,
     isVideoDisabled,
     isScreenSharing,
@@ -187,6 +189,8 @@ export default function App() {
               isVideoDisabled={isVideoDisabled}
               isSyntheticStream={isSyntheticStream}
               layoutMode={layoutMode}
+              callEndedNotice={callEndedNotice}
+              onDismissNotice={dismissCallEndedNotice}
             />
 
             {/* Media Control Toolbar (Bottom of video) */}
