@@ -14,7 +14,7 @@ import { getSavedAuthSession } from './services/authService';
 import { ChevronRight, Info } from 'lucide-react';
 
 export default function App() {
-  const [hubUrl, setHubUrl] = useState('http://localhost:5201/hubs/videocall');
+  const [hubUrl, setHubUrl] = useState('https://chat.piisiit.com/hubs/videocall');
   const [jwtToken, setJwtToken] = useState(() => {
     const saved = getSavedAuthSession();
     return saved?.accessToken || '';
