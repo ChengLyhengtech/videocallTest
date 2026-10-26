@@ -22,6 +22,7 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
   const [callType, setCallType] = useState('video'); // 'video' | 'audio'
   const [activePeerId, setActivePeerId] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null); // { callerId, offer, callType }
+  const [callEndedNotice, setCallEndedNotice] = useState(null); // { peerId, message, type, timestamp }
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoDisabled, setIsVideoDisabled] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -37,6 +38,21 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
   const candidateQueueRef = useRef([]);
   const activePeerIdRef = useRef(null);
   const callTypeRef = useRef('video');
+  const disconnectTimerRef = useRef(null);
+
+  // Auto-dismiss call ended notification after 8 seconds
+  useEffect(() => {
+    if (callEndedNotice) {
+      const timer = setTimeout(() => {
+        setCallEndedNotice(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [callEndedNotice]);
+
+  const dismissCallEndedNotice = useCallback(() => {
+    setCallEndedNotice(null);
+  }, []);
 
   // Keep refs synchronized with state to avoid stale closures in event handlers
   useEffect(() => {
@@ -220,10 +236,40 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
         log(`Peer connection state: ${state}`, state === 'connected' ? 'success' : 'info');
         setConnectionStatus(state);
         if (state === 'connected') {
+          if (disconnectTimerRef.current) {
+            clearTimeout(disconnectTimerRef.current);
+            disconnectTimerRef.current = null;
+          }
           setCallState(CallState.CONNECTED);
-        } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        } else if (state === 'failed') {
+          log('WebRTC peer connection failed (peer connection dropped). Ending call.', 'error');
+          const peerId = activePeerIdRef.current || 'Remote peer';
+          setCallEndedNotice({
+            peerId,
+            message: `WebRTC connection failed with [${peerId}]. Call ended.`,
+            type: 'webrtc_failed',
+            timestamp: Date.now(),
+          });
+          endCall(false);
+        } else if (state === 'disconnected') {
+          log('WebRTC peer connection disconnected (checking for recovery or peer refresh)...', 'warning');
+          if (disconnectTimerRef.current) clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = setTimeout(() => {
+            if (peerConnectionRef.current && peerConnectionRef.current.connectionState === 'disconnected') {
+              log('WebRTC peer connection remained disconnected. Ending call.', 'error');
+              const peerId = activePeerIdRef.current || 'Remote peer';
+              setCallEndedNotice({
+                peerId,
+                message: `Peer [${peerId}] connection timed out. Call ended.`,
+                type: 'webrtc_timeout',
+                timestamp: Date.now(),
+              });
+              endCall(false);
+            }
+          }, 4000);
+        } else if (state === 'closed') {
           if (callState === CallState.CONNECTED) {
-            setCallState(CallState.DISCONNECTED);
+            setCallState(CallState.IDLE);
           }
         }
       };
@@ -248,6 +294,7 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
     }
 
     try {
+      setCallEndedNotice(null);
       setCallType(type);
       callTypeRef.current = type;
       setCallState(CallState.CALLING);
@@ -297,6 +344,7 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
     const isAudioOnly = incomingType === 'audio';
 
     try {
+      setCallEndedNotice(null);
       log(`Accepting ${isAudioOnly ? 'AUDIO' : 'VIDEO'} call from [${callerId}]...`, 'info');
       setCallState(CallState.CONNECTED);
       setActivePeerId(callerId);
@@ -365,6 +413,11 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
    */
   const endCall = useCallback(
     async (notifyPeer = true) => {
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+        disconnectTimerRef.current = null;
+      }
+
       const peerId = activePeerIdRef.current;
       log(`Terminating call (notifyPeer=${notifyPeer}, peer=${peerId || 'none'})...`, 'warning');
 
@@ -375,6 +428,9 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
           log(`Error sending end call notice: ${err.message}`, 'error');
         }
       }
+
+      // Stop all local camera/microphone tracks to release hardware devices
+      stopLocalStream();
 
       // Close WebRTC peer connection
       if (peerConnectionRef.current) {
@@ -400,7 +456,7 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
 
       log('Call ended and resources cleaned up', 'info');
     },
-    [log]
+    [log, stopLocalStream]
   );
 
   /**
@@ -488,12 +544,41 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
   );
 
   /**
-   * SignalR Handler: Peer ended call
+   * SignalR Handler: Peer ended call or refreshed/disconnected
    */
   const handleReceiveCallEnded = useCallback(
     (senderUserId) => {
-      log(`Peer [${senderUserId}] has ended the call`, 'warning');
+      const peerId = senderUserId || activePeerIdRef.current || 'Remote peer';
+      log(`Peer [${peerId}] disconnected or ended the call`, 'warning');
+
+      setCallEndedNotice({
+        peerId,
+        message: `Peer [${peerId}] disconnected or refreshed the page. Call has ended.`,
+        type: 'peer_disconnected',
+        timestamp: Date.now(),
+      });
+
       endCall(false);
+    },
+    [endCall, log]
+  );
+
+  /**
+   * SignalR Handler: Local connection to Hub closed
+   */
+  const handleConnectionClosed = useCallback(
+    (error) => {
+      const peerId = activePeerIdRef.current;
+      if (peerId) {
+        log(`SignalR Hub connection was lost unexpectedly during call with [${peerId}].`, 'error');
+        setCallEndedNotice({
+          peerId,
+          message: 'Your connection to the SignalR Hub was lost. Call ended.',
+          type: 'hub_disconnected',
+          timestamp: Date.now(),
+        });
+        endCall(false);
+      }
     },
     [endCall, log]
   );
@@ -594,13 +679,38 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
       onReceiveVideoAnswer: handleReceiveVideoAnswer,
       onReceiveIceCandidate: handleReceiveIceCandidate,
       onReceiveCallEnded: handleReceiveCallEnded,
+      onConnectionClosed: handleConnectionClosed,
     });
   }, [
     handleReceiveVideoOffer,
     handleReceiveVideoAnswer,
     handleReceiveIceCandidate,
     handleReceiveCallEnded,
+    handleConnectionClosed,
   ]);
+
+  // Handle page refresh or browser close: notify peer immediately and release hardware
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const peerId = activePeerIdRef.current;
+      if (peerId && signalRService.isConnected()) {
+        try {
+          signalRService.endVideoCall(peerId);
+        } catch (e) {
+          console.warn('Failed to send EndVideoCall on beforeunload', e);
+        }
+      }
+      stopLocalStream();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  }, [stopLocalStream]);
 
   // Teardown when component unmounts
   useEffect(() => {
@@ -617,6 +727,8 @@ export function useWebRTC(onLog, userLabel = 'Local User') {
     callType,
     activePeerId,
     incomingCall,
+    callEndedNotice,
+    dismissCallEndedNotice,
     isAudioMuted,
     isVideoDisabled,
     isScreenSharing,

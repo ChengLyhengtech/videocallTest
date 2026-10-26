@@ -14,7 +14,7 @@ import { getSavedAuthSession } from './services/authService';
 import { ChevronRight, Info } from 'lucide-react';
 
 export default function App() {
-  const [hubUrl, setHubUrl] = useState('http://localhost:5201/hubs/videocall');
+  const [hubUrl, setHubUrl] = useState('https://chat.piisiit.com/hubs/videocall');
   const [jwtToken, setJwtToken] = useState(() => {
     const saved = getSavedAuthSession();
     return saved?.accessToken || '';
@@ -39,6 +39,8 @@ export default function App() {
     callType,
     activePeerId,
     incomingCall,
+    callEndedNotice,
+    dismissCallEndedNotice,
     isAudioMuted,
     isVideoDisabled,
     isScreenSharing,
@@ -187,6 +189,8 @@ export default function App() {
               isVideoDisabled={isVideoDisabled}
               isSyntheticStream={isSyntheticStream}
               layoutMode={layoutMode}
+              callEndedNotice={callEndedNotice}
+              onDismissNotice={dismissCallEndedNotice}
             />
 
             {/* Media Control Toolbar (Bottom of video) */}
